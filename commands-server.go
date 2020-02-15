@@ -5,8 +5,48 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/cpu"
 )
+
+type Command interface {
+	Run() string
+}
+
+type GetTime struct {
+}
+
+func (command GetTime) Run() string {
+	return time.Now().Format(time.RFC3339)
+}
+
+type GetCPUusage struct {
+}
+
+func (command GetCPUusage) Run() string {
+	percent, _ := cpu.Percent(time.Second, true)
+	return fmt.Sprintf("User CPU usage %.2f", percent[cpu.CPUser])
+}
+
+type DefaultCommand struct {
+}
+
+func (command DefaultCommand) Run() string {
+	return "Type get_cpu or get_time. I'm not smart!"
+}
+
+func CommandDispatcher(command_name string) Command {
+	switch command_name {
+	case "get_time":
+		return GetTime{}
+	case "get_cpu":
+		return GetCPUusage{}
+	default:
+		return DefaultCommand{}
+	}
+}
 
 // требуется только ниже для обработки примера
 
@@ -27,17 +67,6 @@ func main() {
 		}
 
 		go handleConnection(conn)
-		// // Будем прослушивать все сообщения разделенные \n
-		// message, err := bufio.NewReader(conn).ReadString('\n')
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// // Распечатываем полученое сообщение
-		// fmt.Print("Message Received:", string(message))
-		// // Процесс выборки для полученной строки
-		// // newmessage := strings.ToUpper(message)
-		// // Отправить новую строку обратно клиенту
-		// conn.Write([]byte(time.Now().Format(time.RFC3339) + "\n"))
 	}
 }
 
@@ -53,7 +82,7 @@ func handleConnection(conn net.Conn) {
 	}
 
 	// convert bytes from buffer to string
-	message := string(bufferBytes)
+	message := strings.TrimSuffix(string(bufferBytes), "\n")
 	// get the remote address of the client
 	clientAddr := conn.RemoteAddr().String()
 	// format a response
@@ -62,9 +91,8 @@ func handleConnection(conn net.Conn) {
 	// have server print out important information
 	log.Println(response)
 
-	// let the client know what happened
-	// conn.Write([]byte("you sent: " + response))
-	conn.Write([]byte(time.Now().Format(time.RFC3339) + response + "\n"))
+	// conn.Write([]byte(GetTime{}.Run() + "\n"))
+	conn.Write([]byte(CommandDispatcher(message).Run() + "\n"))
 
 	// recursive func to handle io.EOF for random disconnects
 	handleConnection(conn)
